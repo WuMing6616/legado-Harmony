@@ -8,17 +8,15 @@ import soundFind from './soundFind';
 import dialogTitleFuction from '../../../componets/common/dialogTitleFuction';
 import { IconTitleVo } from '../../../componetsmodel/IconTitleVo';
 import FindGroupSource from '../../../componets/group/FindGroupSource';
-import { showMessage } from '../../../componets/common/promptShow';
-import FontConstants from '../../../common/constants/FontConstants';
-import CommonConstants from '../../../common/constants/CommonConstants';
-import { HelpInfo } from '../../../viewData/HelpInfo';
 import PaddingConstants from '../../../common/constants/PaddingConstants';
 import ImportCommon from '../../../componets/import/ImportCommon';
-import axios, { AxiosError, AxiosResponse } from '@ohos/axios';
 import { BookSource } from '../../../componets/dataList/BookSource';
+import { FileHandler } from '../../../common/utils/FileHandler';
+import axios, { AxiosResponse } from '@ohos/axios';
 import { common } from '@kit.AbilityKit';
-import {  picker } from '@kit.CoreFileKit';
-import { BusinessError } from '@kit.BasicServicesKit';
+import Help from '../../../componets/dialog/help';
+import { getPasteDataSync, isNetworkUrl, sleep } from '../../../common/utils/utils';
+import { showMessage } from '../../../componets/common/promptShow';
 
 /**
  * @author 2008
@@ -127,21 +125,22 @@ export default struct IndexFind {
       .scrollable(this.APP_INDEX_SCROLLABLE)
       Flex()
         .bindSheet(this.isShowHelp,this.dialogHelpFuction(),{
-        height: '50%',
-        showClose:false,
-        dragBar:false,
-        onDisappear:()=>{
-          this.isShowHelp = false
-       }
-      })
-      .bindSheet(this.isShowImport,this.dialogImportFunction(),{
-        detents: [SheetSize.FIT_CONTENT, SheetSize.LARGE, 200],
-        dragBar: true,
-        showClose:false,
-        onDisappear:()=>{
-          this.isShowImport = false
-        }
-      })
+          height: '50%',
+          showClose:false,
+          dragBar:false,
+          onDisappear:()=>{
+            this.isShowHelp = false
+         }
+        })
+      Flex()
+        .bindSheet(this.isShowImport,this.dialogImportFunction(),{
+          detents: [SheetSize.FIT_CONTENT, SheetSize.LARGE, 200],
+          dragBar: true,
+          showClose:false,
+          onDisappear:()=>{
+            this.isShowImport = false
+          }
+        })
     }
     .linearGradient({
       direction: GradientDirection.Bottom, // 渐变方向
@@ -226,6 +225,7 @@ export default struct IndexFind {
        dialogTitleFuction({
          title:item.title,
          icon:item.icon,
+         isBorder: this.FIND_Dialog_Right_Fuction.length !== index + 1
        })
          .onClick(()=>{
            this.findBindMenuFunction(index)
@@ -234,112 +234,62 @@ export default struct IndexFind {
    }
   }
 
-  getDate() {
-    axios<string, AxiosResponse<string>, null>({
-      method: "get",
-      url: 'https://node.wisdoms.xin/static/file/20240704/sy.json'
-    }).then((res: AxiosResponse) => {
+  async pasteAnalyze() {
+    try {
+      const url = getPasteDataSync()
+      if (!url) {
+        showMessage('未获取到粘贴信息，请求默认数据')
+        await sleep()
+        // return
+      }
+      // if (!isNetworkUrl(url ?? '')) {
+      //   showMessage('复制的链接不正确')
+      //   return
+      // }
+      const res: AxiosResponse = await axios
+        .get(url ?? 'https://node.wisdoms.xin/static/file/20240704/sy.json');
       this.sourceList = res.data;
       this.isShowImport = true;
-      console.info('result:' + JSON.stringify(res.data));
-    }).catch((error: AxiosError) => {
-      console.error(error.message);
-    })
+    } catch (err) {
+      console.error('错误 ' + err);
+    }
   }
 
   findBindMenuFunction(index:number){
     switch (index){
       case 0:
-        showMessage(this.FIND_Dialog_Right_Fuction[index].title);
-        this.getDate();
+        this.pasteAnalyze();
         break;
       case 1:
-        showMessage(this.FIND_Dialog_Right_Fuction[index].title);
-        const documentSelectOptions = new picker.DocumentSelectOptions();
-        // 选择文档的最大数目（可选）
-        documentSelectOptions.maxSelectNumber = 1;
-        // 选择文件的后缀类型，若选择项存在多个后缀名，则每一个后缀名之间用英文逗号进行分隔（可选），后缀类型名不能超过100
-        documentSelectOptions.fileSuffixFilters = ['.json'];
-
         let context = getContext(this) as common.Context;
-        let documentViewPicker = new picker.DocumentViewPicker(context);
-        documentViewPicker.select(documentSelectOptions).then((documentSelectResult: Array<string>) => {
-          //文件选择成功后，返回被选中文档的uri结果集。
-          const  uri = documentSelectResult[0];
-          console.log('文件目录：' + uri);
-          // let file = fs.openSync(uri, fs.OpenMode.READ_WRITE);
-          // let buf = new ArrayBuffer(40960);
-          // fs.readSync(file.fd, buf);
-          // fs.closeSync(file);
-          // let uint8View = new Uint8Array(buf);
-          // // 设置编码格式为“utf-8”
-          // let textDecoder = util.TextDecoder.create('utf-8', { ignoreBOM: true });
-          // // 解码输后获取对应文本
-          // let readString = textDecoder.decodeWithStream(uint8View, { stream: false });
-          // console.log('读取的数据内容：' + readString);
-          // this.sourceList = JSON.parse(readString);
-          // this.isShowImport = true
-          this.getDate()
-        }).catch((err: BusinessError) => {
-          console.error(`Invoke documentViewPicker.select failed, code is ${err.code}, message is ${err.message}`);
+        FileHandler.pickerFile(context).then((res: BookSource[]) => {
+          this.sourceList = res;
+          this.isShowImport = true
         })
         break;
-      case 2: showMessage(this.FIND_Dialog_Right_Fuction[index].title);break;
+      case 2:
+        router.pushUrl({
+          url: 'pages/view/Find/BookSource/Index'
+        })
+        break;
       case 3:
-        showMessage(this.FIND_Dialog_Right_Fuction[index].title);
         this.isShowHelp = true;
         break;
     }
   }
 
   @Builder dialogHelpFuction(){
-    Flex({
-      direction:FlexDirection.Column,
-      justifyContent:FlexAlign.SpaceBetween
-    }){
-      Column(){
-        Text($r('app.string.export_help'))
-          .font({
-            size:FontConstants.FONT_SIZE_16,
-            weight:FontConstants.FONT_WEIGHT_500,
-            family:CommonConstants.FAMILY_PingFANG
-          })
-          .textAlign(TextAlign.Center)
-          .lineHeight(24)
-          .fontColor($r('app.string.color_black_88'))
-          .padding({
-            bottom:PaddingConstants.PADDING_12})
-
-        Flex(){
-          Text(HelpInfo.HELP_INFO_MESSAGE)
-        }.padding({
-          top:PaddingConstants.PADDING_12,
-          bottom:PaddingConstants.PADDING_12})
-      }
-      Button($r('app.string.i_know'))
-        .width('100%')
-        .backgroundColor($r('app.color.theme_color'))
-        .padding({
-          left:PaddingConstants.PADDING_32,
-          right:PaddingConstants.PADDING_32,
-          top:PaddingConstants.PADDING_8,
-          bottom:PaddingConstants.PADDING_8})
-        .onClick(()=>{
+    Flex() {
+      Help({
+        btnClick: () => {
           this.isShowHelp = false
-        })
+        }
+      })
     }
-    .height('100%')
-    .padding({left:PaddingConstants.PADDING_20,
-      right:PaddingConstants.PADDING_20,
-      top:PaddingConstants.PADDING_12,
-      bottom:PaddingConstants.PADDING_12})
   }
 
   @Builder dialogImportFunction() {
-    Flex({
-      direction: FlexDirection.Column,
-      justifyContent: FlexAlign.SpaceBetween
-    }) {
+    Flex() {
       ImportCommon({sourceList: this.sourceList, show: this.isShowImport})
     }
   }
